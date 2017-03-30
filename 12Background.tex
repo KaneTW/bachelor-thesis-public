@@ -1,0 +1,244 @@
+\chapter{Background}
+\label{chap:bg}
+\section{Partial functions}
+We require a notion of partial functions to model various operations that require lookup by a key.
+\begin{definition}
+\label{def:partial}
+A partial function $f : A \mapsto B$ is only defined on a subset $A' \subseteq A$. For all $x \in A$, either $f(x) \in B$ or $f(x)$ is undefined.
+Partial functions consist of 2-tuples $x \to y$ so that $f(x) = y$ and each $x$ occurs at most once. We define the following operations on partial functions:
+\begin{itemize}
+    \item The domain of definition of a partial function is given by $\Dom(f) = A'$
+    \item The restriction $f|_S : A \cap S \mapsto B$ of $f : A \mapsto B$ to a set $S$ is obtained by setting all elements in $A\setminus S$ to undefined
+    \item The intersection $f \cap g : A_1 \cap A_2 \mapsto B$  of two partial functions $f : A_1 \mapsto B$ and $g : A_2 \mapsto B$ is given by $f \cap g = f|_{\Dom(g)}$
+    \item The union $f \cup g : A_1 \cup A_2 \mapsto B$ is well-defined iff $\Dom(f) \cap \Dom(g) = \varnothing$. Then \[ (f \cup g)(x) = \begin{cases} 
+    f(x) & \text{if } x \in \Dom(f) \\
+    g(x) & \text{if } x \in \Dom(g) \\
+    \end{cases} \]
+    \item The set-minus operation $f \setminus g : A_1 \mapsto B$ is given by $f|_{A \setminus \Dom(g)}$
+    \item The symmetric difference $f \oplus g : A_1 \cup A_2 \mapsto B$ is given by $(f \setminus g) \cup (g \setminus f)$
+\end{itemize}
+
+
+\end{definition}
+\section{Paths}
+Representation of heap structure requires a way to model field and array access sequences. While in actual programs paths can be described by a set of finite sequences, static analysis requires a more permissive language that can model potentially infinite paths. First we introduce a few auxiliary definitions:
+\begin{definition}
+A \emph{heap edge} $\mathcal{H} = \mathcal{F} \cup \{ \text{arrayAccess} \}$ is either an instance field or a placeholder for an array index access, as in general we cannot statically determine the accessed array element.
+\end{definition}
+\begin{definition}
+A \emph{heap sequence} $\mathcal{H}^*$ is a finite word over the alphabet containing all heap edges.
+\end{definition}
+\begin{definition}
+\label{def:path}
+An (abstract) \emph{heap path} $\mathcal{P}$ is a pattern over heap edges with the following syntax:
+\grammarindent=120pt
+\begin{grammar}
+<path> ::= $\epsilon$
+\alt <concretePrefix> <abstractSuffix>
+
+<concretePrefix> ::= $\epsilon$
+\alt <heapEdge>.<concretePrefix>
+
+<heapEdge> ::= field | "arrayAccess"
+
+<abstractSuffix> ::= $\epsilon$
+\alt \{ <fieldEntries> \}, <abstractSuffix>
+
+<fieldEntries> ::= <fieldEntry> 
+    \alt <fieldEntry>, <fieldEntries> \\ so that each <heapEdge> occurs at most once in <fieldEntries>
+
+<fieldEntry> ::= $<heapEdge>^{\left[n, <upperBound>\right]}$ where $n \in \mathbb{N}$
+
+<upperBound> ::= 0 | 1 | *
+\end{grammar}
+\end{definition}
+
+\begin{definition}[Semantics]
+The semantics of the heap path syntax are defined by a set of inference rules and axioms. If a heap sequence $s \in \mathcal{H}^*$ matches a path $p \in \mathcal{P}$, then $s \Downarrow p$. Note that $h^n$ is the n-fold repetition of $h$, i.e. $h^n$ = $\underbrace{h \cdots h}_{n \text{ times}}$.
+In the following inference rules,
+\begin{itemize}
+    \item $h$ denotes a heap edge
+    \item $s$ and $\mathit{pre}$ denote a heap sequence
+    \item $p$ denotes a heap path
+    \item $\mathit{suf}$ denotes an abstract suffix
+\end{itemize}
+Let $\operatorname{adjustBounds}$ be a function that reduces the lower and upper bounds of a matching heap edge by the appropriate amount \[ \operatorname{adjustBounds}(hs, h^{[n,m]}, s) := hs \setminus \{ h^{[n,m]} \} \cup \{ h^{[\max(0, n - |s|_h), \max(0, m - |s|_h)]} \} \] where
+for all $n : \mathbb{N}$, $* - n := *$ and $|s|_h$ denotes the amount of elements $h$ in a sequence $s$.
+\infax[P-epsilon]{\epsilon \Downarrow \epsilon}
+\infax[P-prefix-empty]{\mathit{pre} \Downarrow \mathit{pre}}
+\infrule[P-prefix]{s_2 \Downarrow \mathit{suf}}{\mathit{pre}.s_2 \Downarrow \mathit{pre}\ \mathit{suf}}
+\infax[P-entry-eps]{\epsilon \Downarrow h^{[0,n]} }
+\infrule[P-entry-one]{n \le 1}{ h \Downarrow h^{[n,1]}}
+\infrule[P-entry-many]{m \ge n}{h^m \Downarrow  h^{[n,*]} }
+\infrule[P-entries-incomp]{\exists h^{[n,m]} \in \mathit{hs}, s_1 \Downarrow h^{[n,m]} \andalso s_2 \Downarrow \operatorname{adjustBounds}(\mathit{hs}, h^{[n,m]}, s_1), \mathit{suf}}{s_1.s_2 \Downarrow \mathit{hs}, \mathit{suf}}
+\infrule[P-entries-order]{\exists h_1^{[n_1,m_1]} \in hs_1, s_1 \Downarrow h^{[n_1,m_1]} \andalso \forall hs_2 \in \mathit{suf}, \forall h_2^{[n_2,m_2]} \in hs_2, h_1 \ne h_2 \andalso s_2 \Downarrow \mathit{suf}}{s_1.s_2 \Downarrow hs_1, \mathit{suf}}
+\end{definition}
+
+\begin{definition}[Equivalence]
+Two paths $p_1, p_2 : \mathcal{P}$ are equivalent (denoted $p_1 \equiv p_2$) iff for all heap sequences $s$, $s \Downarrow p_1$ iff $s \Downarrow p_2$.
+\end{definition}
+
+\begin{definition}[Concatenation]
+The concatenation $p_1.p_2 : \mathcal{P}$ of two paths $p_1, p_2 : \mathcal{P}$ is an operation defined so that the following inference rule holds
+\infrule[P-concat]{s_1 \Downarrow p_1 \andalso s_2 \Downarrow p_2}{s_1.s_2 \Downarrow p_1.p_2}
+\end{definition}
+
+\begin{definition}[Alternation]
+The alternation $p_1|p_2 : \mathcal{P}$ of two paths $p_1, p_2 : \mathcal{P}$ is an operation defined so that the following inference rules hold
+\infrule[P-alter-left]{s \Downarrow p_1}{s \Downarrow p_1|p_2}
+\infrule[P-alter-right]{s \Downarrow p_2}{s \Downarrow p_1|p_2}
+\end{definition}
+
+\begin{remark}
+The actual implementation of heap paths has the following structure:
+\begin{enumerate}
+    \item A concrete prefix sequence $pre \in \mathcal{H}^*$
+    \item An abstract suffix consisting of a 4-tuple with
+     \begin{enumerate}
+         \item a flag whether the suffix matches the empty path $\epsilon$
+         \item a partial function $oa : \mathcal{H} \mapsto \{0,1,*\}$  so that for every matching heap sequence, all heap edges $h$ contained in the heap sequence occur at most $oa(h)$ times
+         \item a partial function $ua : \mathcal{H} \mapsto \mathbb{N}$ so that for every matching heap sequence, all heap edges $h$ occur at least $ua(h)$ times
+         \item a partial order $f < g$ so that if $f < g$, then the sequence only matches if no $f$ occurs after $g$
+     \end{enumerate}
+\end{enumerate}
+\end{remark}
+
+\section{Heap-shape analysis}
+A shape analysis is a static analysis that determines information about allocated data structures in a program. We require that the used shape analysis is sound, i.e. that the determined information is true for every program input.
+
+\begin{definition}
+A \emph{heap-shape analysis} is a path-sensitive analysis that provides a function $\operatorname{reachableAt} : (\mathit{Stmt}, \mathit{Refs}) \to \mathit{Refs} \mapsto \mathcal{P}$  which given a statement and a base reference provides a partial function of all local variables referring to an object reachable from the base reference to a \emph{heap path} describing where that object is reachable from the given base. \emph{Path-sensitive} means that the analysis doesn't simply check whether $x$ is reachable from $y$ but returns an overapproximation of all paths to $x$ from $y$.
+\end{definition}
+As long as the used heap-shape analysis is path-sensitive and sound, it is irrelevant what analysis is used exactly. In principle even non-path-sensitive shape analyses can be used by assuming a path matching every heap sequence for all reference.
+
+\section{Soot}
+Soot~\cite{vallee1999soot} is a Java framework which provides a set of intermediate representations and APIs for analysis and optimisation of Java bytecode. The primary intermediate language used for analyses is Jimple; other representations include BAF, a stack-based language, Shimple, a static single assignment variant of Jimple, and Grimple, a form of Jimple suitable for decompiling.
+
+Soot's execution is divided into packs, with each pack containing phases---phases being where the actual analyses are run. Usually execution follows the following order:
+\begin{enumerate}
+    \item The Jimple body creation pack (\texttt{jb}) is applied to each method body, which transforms Java bytecode into Jimple code.
+    \item The 4 following whole-program packs are applied. These contain all interprocedual analyses as each phase in this pack runs exactly once.
+    \begin{enumerate}
+        \item call graph pack (\texttt{cg})
+        \item whole-jimple transformation pack (\texttt{wjtp})
+        \item whole-jimple optimisation pack (\texttt{wjop})
+        \item whole-jimple annotation pack (\texttt{wjap})
+    \end{enumerate}
+    \item After that, a set of per-method jimple transformation, optimisation and annotation packs is applied (\texttt{jtp}, \texttt{jop} and \texttt{jap})
+    \item Finally, the Jimple bodies are converted into the bytecode precursor BAF in the \texttt{bb} pack and tags are aggregated in the \texttt{tag} pack, for example making sure that for each line number, only one tag exists.
+\end{enumerate}
+
+\subsection{Jimple}
+\label{subsect:jimple}
+Jimple~\cite{vallee1999soot} is a representation of Java bytecode which is well-suited for static analyses and program transformations. Firstly, Jimple is compact; it has essentially only 11 types of statements and 19 instructions in total, compared to more than 200 instructions in Java bytecode. Secondly, every statement is in 3-address form, i.e. instructions are kept as simple as possible, most of them having the form \texttt{x = y op z}. Additionally, the stack has been eliminated and replaced by local variables. All implicit references to stack positions are now explicit references to locals. Finally, all local variables are typed with either a primitive, class or interface type. Due to type erasure in Java bytecode, support for generic types is missing.
+
+\subsubsection{Language description}
+Jimple has 11 types of statements, out of which \emph{assignStmt}, \emph{identityStmt} and \emph{invokeStmt} are relevant to this thesis.
+\begin{itemize}
+    \item \emph{assignStmt} is either an assignment of an \emph{rvalue} to a local or an \emph{immediate} to a static field, an instance field or an array reference.
+    An \emph{rvalue} is a static field or instance field access, an array reference, an \emph{immediate} or an expression and an \emph{immediate} is a local or a constant.
+    \item \emph{identityStmt} is used to assign locals to special values such as \texttt{this}, parameter references or a caught exception.
+    \item \emph{invokeStmt} invokes a method and ignores the result
+\end{itemize}
+An expression can be one of the following:
+\begin{itemize}
+    \item an usage of a binary operator such as \texttt{+} on two immediates
+    \item a type cast
+    \item a check whether an immediate is an instance of some type
+    \item one of the following method invocations
+    \begin{itemize}
+        \item \texttt{specialinvoke}, which is, e.g., an invoke of a constructor method
+        \item \texttt{interfaceinvoke}, which is a call of a method defined in an interface
+        \item \texttt{virtualinvoke}, which is a regular method call
+        \item \texttt{staticinvoke}, which calls a static method
+    \end{itemize}
+    \item an instantiation of a new reference type (note that this doesn't call the actual constructor)
+    \item an instantiation of an array or multi-array of some type with dimensions stored in immediates.
+    \item the length of an immediate in case the immediate is an array
+    \item the negative of an immediate in case the immediate is a number
+\end{itemize}
+
+\begin{figure}
+\grammarindent=110pt
+\centering
+\begin{grammar}
+<stmt> ::= <assignStmt> | <identityStmt> | <gotoStmt>
+    \alt <ifStmt> | <invokeStmt> | <switchStmt>
+    \alt <monitorStmt> | <returnStmt> | <throwStmt> 
+    \alt <breakpointStmt> | <nopStmt>
+
+<assignStmt> ::= local "=" <rvalue>";"
+    \alt field "=" <imm>";"
+    \alt local.field "=" <imm>";"
+    \alt local"["<imm>"]" "=" <imm>";"
+
+<identityStmt> ::= local ":= @this:" type";"
+    \alt local ":= @parameter"$n$":" type";"
+    \alt local ":= @exception;"
+    
+<gotoStmt> ::= "goto" label";"
+
+<ifStmt> ::= "if" <conditionExpr> "goto" label";"
+
+<invokeStmt> ::= "invoke" <invokeExpr>";"
+
+<switchStmt> ::= "lookupswitch" <imm> "{" \\
+    "case" value$_1$": goto" label$_1$";" \\
+    $\cdots$ \\
+    "case" value$_n$": goto" label$_n$";" \\
+    "default: goto "defaultLabel"; };"
+    \alt "tableswitch" <imm> "{" \\
+    "case" low": goto" lowLabel";" \\
+    $\cdots$ \\
+    "case" high": goto" highLabel";" \\
+    "default: goto "defaultLabel"; };"
+
+<monitorStmt> ::= "entermonitor" <imm>";" | "exitmonitor" <imm>";"
+
+<returnStmt> ::= "return" <imm>";" | "return;"
+
+<throwStmt> ::= "throw" <imm>";"
+
+<breakpointStmt> ::= "breakpoint;"
+
+<nopStmt> ::= "nop;"
+\end{grammar}
+\label{fig:grmJimpleStmt}
+\caption{Jimple grammar---statements}
+\end{figure}
+\begin{figure}
+\grammarindent=110pt
+\centering
+\begin{grammar}
+<imm> ::= local | constant
+
+<conditionExpr> ::= <imm> <condop> <imm>
+
+<condop> ::= ">" | "<" | "=" | "!=" | "<=" | ">="
+
+<rvalue> ::= <concreteRef> | <imm> | <expr>
+
+<concreteRef> ::= field | local.field | local"["<imm>"]"
+
+<invokeExpr> ::= "specialinvoke" local.method"("<imm>","$\cdots$","<imm>")"
+    \alt "interfaceinvoke" local.method"("<imm>","$\cdots$","<imm>")"
+    \alt "virtualinvoke" local.method"("<imm>","$\cdots$","<imm>")"
+    \alt "staticinvoke" method"("<imm>","$\cdots$","<imm>")"
+    
+<expr> ::= <imm> <binop> <imm> 
+    \alt "("type")" <imm>
+    \alt <imm> "instanceof" type
+    \alt <invokeExpr>
+    \alt "new" refType
+    \alt "newarray("type")["<imm>"]"
+    \alt "newmultiarray("type")["<imm>"]" $\cdots$ "["<imm>"]" "[]*"
+    \alt "length" <imm>
+    \alt "neg" <imm>
+    
+<binop> ::= "+" | "-" | "*" | "/" | "\%" | "rem" | "<<"  | "<<<"
+    \alt  ">>" | "&" | "|" | "cmp" | "cmpg" | "cmpl"
+    \alt <condop>
+\end{grammar}
+\label{fig:grmJimpleExpr}
+\caption{Jimple grammar---expressions}
+\end{figure}

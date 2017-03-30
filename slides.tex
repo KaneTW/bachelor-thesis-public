@@ -1,0 +1,692 @@
+
+\documentclass{beamer}
+
+\usetheme{Berlin}
+\useoutertheme{infolines}
+\usepackage{natbib,bibentry}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage[T1]{fontenc}
+\usepackage{float}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{caption}
+\usepackage{minted}
+\usepackage{parcolumns}
+\usepackage[normalem]{ulem}
+\usepackage{tikz}
+\usepackage{bcprules}
+\usepackage{mathrsfs}
+\usepackage[beamer,customcolors]{hf-tikz}
+\newcommand{\Dom}{\operatorname{Dom}}
+\newcommand{\Matching}{\operatorname{access}}
+
+\usetikzlibrary{shapes,snakes, fit}
+\usetikzlibrary{scopes,backgrounds}
+\usetikzlibrary{calc, positioning, matrix,arrows}
+
+\newminted{java}{linenos}
+\newmint{java}{linenos}
+\newmintinline{java}{}
+
+\title{Refining heap-shape information for Java programs using reachable types}
+\author{David Kr\"{a}utmann}
+\institute{RWTH Aachen}
+
+
+\AtBeginSection[]
+  {
+     \begin{frame}<beamer>
+     \frametitle{Outline}
+     \tableofcontents[currentsection]
+     \end{frame}
+  }
+
+
+
+\tikzset{
+c2/.style={
+set fill color=green!50!lime!60,
+set border color=green!40!black,
+},
+c3/.style={
+set fill color=blue!20!cyan!60,
+set border color=blue!60!cyan,
+}
+}
+
+
+\makeatletter
+\def\normaljustify{%
+  \let\\\@centercr
+  \rightskip\z@skip
+  \leftskip\z@skip%
+  \parfillskip=0pt plus 1.0fil\relax
+}
+\makeatother
+
+%TODO either less text or keep presentation relevant to text
+
+\begin{document}
+
+\begin{frame} \titlepage \end{frame}
+
+\begin{frame}{Outline} \tableofcontents \end{frame}
+
+\section{Introduction}
+\begin{frame}{Introduction}
+\begin{itemize}
+    \item Shape analysis is a useful tool in many other analyses
+    \begin{itemize}
+        \item Termination checking
+        \item Compiler optimisation
+        \item Automatic parallelisation
+    \end{itemize}
+    \item Goal: improve shape analysis accuracy using type information
+    \item Existing reachable type analyses are not modular and path-sensitive
+    %TODO too general
+    
+\end{itemize}
+\end{frame}
+\begin{frame}{Reachable type analysis}
+\begin{itemize}
+    \item Goal: model what types are reachable from a given reference
+    \item Associate each type with a pattern describing where it can occur
+    \item[$\Rightarrow$] Path-sensitive
+    \item Ensure that analysis has to run only once for each method
+    \item[$\Rightarrow$] Modular
+    % \item Path-sensitive, sound, interprocedual type analysis    
+    % \item Each local variable/static field is assigned a \emph{parametric type set}
+    % \item Effect of method invocations on memory state is modeled by \emph{parametric method results}
+    % \item Parametric: allows for placeholders for arguments and static fields that can be replaced at invocation sites
+    % \item[$\Rightarrow$] Each method has to be analysed only once
+\end{itemize}
+\end{frame}
+
+\section{Background}
+\subsection{Heap paths}
+\begin{frame}{Problem}
+\begin{itemize}
+    \item Heap locations can be represented by a sequence of field and array accesses
+    \item The actual path taken to access an object $y$ from $x$ is finite
+    \item Problem 1: multiple, potentially infinite paths from $x$ to $y$ exist
+    \item Problem 2: static analysis has to converge for all inputs
+    \item[$\Rightarrow$] Simple, finite and suitably permissive representation required
+\end{itemize}
+\end{frame}
+\begin{frame}{Definitions}
+\begin{itemize}
+    \item \emph{heap edge}: instance field \[ \mathcal{H} := \mathcal{F} \]
+    \item \emph{heap sequence}: finite word over the alphabet of all heap edges \[ \mathcal{H}^* \]
+    \item \emph{heap path}: overapproximating pattern over heap edges \[ \mathcal{P} \]
+\end{itemize}
+\end{frame}
+\begin{frame}{Heap path}
+\begin{block}{1. bounded edges}
+Heap edge $h^{[n,m]}$ with a lower bound $n \in \mathbb{N}$ and an upper bound $m \in \{ 0,1,* \}$
+\begin{itemize}
+    \item<1-> $\mathtt{value}^{[0,1]}$
+        \begin{itemize}
+            \item[$\checkmark$] matches $\epsilon$
+            \item[$\checkmark$] matches $\mathtt{value}$
+            \item[$\times$] does not match anything else
+        \end{itemize}
+    \item<2-> $\mathtt{next}^{[1,*]}$
+        \begin{itemize}
+            \item[$\checkmark$] matches $\mathtt{next}$
+            \item[$\checkmark$] matches $\mathtt{next.next}$
+            \item[$\times$] does not match $\epsilon$
+            \item[$\times$] does not match $\mathtt{value.next}$
+        \end{itemize}
+\end{itemize}
+\end{block}
+\end{frame}
+\begin{frame}{Heap path}
+\begin{block}{2. set of bounded edges}
+Set of bounded heap edges: each element can occur in any order
+\begin{itemize}
+    \item<1-> $\{ \mathtt{left}^{[0,*]}, \mathtt{right}^{[0,*]} \}$ 
+        \begin{itemize}
+            \item[$\checkmark$] matches $\texttt{left}$
+            \item[$\checkmark$] matches $\texttt{right}$
+            \item[$\checkmark$] matches $\texttt{left.right.left}$
+        \end{itemize}
+    \item<2-> $\{ \mathtt{value}^{[1,1]}, \mathtt{next}^{[0,*]} \}$
+        \begin{itemize}
+        \item[$\checkmark$] matches $\mathtt{value}$
+            \item[$\checkmark$] matches $\mathtt{value.next}$
+            \item[$\checkmark$] matches $\mathtt{next.value.next}$
+            \item[$\times$] does not match $\epsilon$
+            \item[$\times$] does not match $\mathtt{next}$
+            \item[$\times$] does not match $\mathtt{value.value}$
+        \end{itemize}
+
+\end{itemize}
+\end{block}
+\end{frame}
+\begin{frame}{Heap path}
+\begin{block}{3. sequence of sets}
+Sequence of sets: heap edges occurring in a set cannot occur after it
+\begin{itemize}
+    \item<1-> $\{\mathtt{next}^{[0,*]}\}, \{ \mathtt{value}^{[1,1]} \}$
+        \begin{itemize}
+            \item[$\checkmark$] matches $\mathtt{value}$
+            \item[$\checkmark$] matches $\mathtt{next.value}$
+            \item[$\checkmark$] matches $\mathtt{next.next.value}$
+            \item[$\times$] does not match $\epsilon$
+            \item[$\times$] does not match $\mathtt{value.next}$
+            \item[$\times$] does not match $\mathtt{next}$
+            \item[$\times$] does not match $\mathtt{next.value.next}$
+        \end{itemize}
+\end{itemize}
+\end{block}
+\end{frame}
+\begin{frame}{Heap path}
+\begin{block}{4. concrete prefix}
+Heap sequence as prefix that always occurs
+\begin{itemize}
+    \item $\mathtt{left.right} \{ \mathtt{next}^{[1,*]}, \mathtt{value}^{[1,1]} \}$
+    \begin{itemize}
+    \item[$\checkmark$] matches $\mathtt{left.right.value}$
+    \item[$\checkmark$] matches $\mathtt{left.right.value.next}$
+    \item[$\checkmark$] matches $\mathtt{left.right.next.next.value}$
+    \item[$\times$] does not match $\epsilon$
+    \item[$\times$] does not match $\mathtt{left.next}$
+    \item[$\times$] does not match $\mathtt{left.right}$
+    \item[$\times$] does not match $\mathtt{left.right.next}$
+    \end{itemize}
+\end{itemize}
+\end{block}
+\end{frame}
+\begin{frame}{Operations}
+\begin{itemize}
+    \item Alternation and concatenation are not a syntactic element (cf. regular expressions)
+    \item Operations that construct a new heap path so that
+    \infrule[P-concat]{s_1 \Downarrow p_1 \andalso s_2 \Downarrow p_2}{s_1.s_2 \Downarrow p_1.p_2}
+    \infrule[P-alter-left]{s \Downarrow p_1}{s \Downarrow p_1|p_2}
+    \infrule[P-alter-right]{s \Downarrow p_2}{s \Downarrow p_1|p_2}
+\end{itemize}
+\end{frame}
+\subsection{Heap-shape analysis}
+\begin{frame}{Heap-shape analysis}
+\begin{itemize}
+    \item The reachable type analysis requires a way to enumerate all local variables that are the predecessors of a reference
+    %TODO local variables only
+    %TODO: global: ignore static fields and arrays completely
+    \item[$\Rightarrow$] Heap-shape analysis required
+    \begin{enumerate}
+        \item Sound: soundness of reachable type analysis has to be maintained
+        \item Path-sensitive: path information for predecessors required for increased precision
+    \end{enumerate}
+\end{itemize}
+\end{frame}
+%TODO unneeded here; maybe i
+% \subsection{Soot and Jimple}
+% \begin{frame}{Soot}
+% \begin{itemize}
+%     \item Soot: Java framework for program transformation and analysis
+%     \item Operates primarily on Java bytecode
+%     \item Provides a simple intermediate representation \emph{Jimple}
+% \end{itemize}
+% \end{frame}
+% \begin{frame}{Jimple}
+% \begin{itemize}
+%     \item Typed 3-address representation of JBC
+%     \item 11 statements, 19 instructions total (cf. JBC: with $>200$ instructions)
+%     \item Important statements and expressions:
+%     \begin{itemize}
+%         \item \emph{assignStmt} (local = \emph{rvalue}, local.field = local) and \emph{identityStmt}~(local~=~\texttt{@this})
+%         \item \emph{invokeStmt} and \emph{invokeExpr} (\texttt{staticinvoke}, \texttt{virtualinvoke}, ...)
+%         \item \emph{ifStmt} (\texttt{if} \emph{conditionExpr} \texttt{goto} label)  and \emph{gotoStmt} (\texttt{goto} label)
+%         \item \emph{returnStmt}
+%     \end{itemize}
+% \end{itemize}
+% \end{frame}
+\section{Reachable type analysis}
+\subsection{Semantics}
+\begin{frame}{Heap shape}
+    \tikzset{block/.style={shape=rectangle, draw, node distance=-1pt, minimum width = 10em, line width=1pt}}
+    \tikzset{headblock/.style={shape=rectangle, draw, node distance=-1pt, minimum width = 10em, line width=3pt}}
+    \begin{tikzpicture}
+        \node[headblock] (list1) {List};
+        \node[left=1em of list1] {};
+        \node[block,below=of list1] (next1) {next};
+        \node[block,below=of next1] (value1) {value};
+        \node[headblock,right=4em of list1] (list2) {List};
+        \node[block,below=of list2] (next2) {next};
+        \node[block,below=of next2] (value2) {value};
+        
+        \node[shape=circle, draw, minimum width=2em, line width=1pt, above=1em of list1] (ref) {xs};
+        
+        \node[headblock, below=2em of value1] (obj1) {SomeClass};
+        \node[headblock, below=2em of value2] (obj2) {OtherClass};
+        \draw[->] (next1.east) to (list2.west);
+        \draw[->] (ref.south) to (list1.north);
+        \draw[->] (value1.south) to (obj1.north);
+        \draw[->] (value2.south) to (obj2.north);
+        \draw[->, bend right, out=210, looseness=1.5] (next2.east) to (list1.north);
+    \end{tikzpicture}
+\end{frame}
+\begin{frame}{Semantics}
+\begin{block}{Exact reachable type set}
+    The exact reachable type set $\mathcal{RTS}_\text{exact} = \mathcal{JT} \mapsto \mathscr{P}(\mathcal{H}^*)$ is a partial function of Java types to a set of heap sequences at which each type occurs.
+\end{block}
+\begin{block}{Runtime reachable types}
+    The runtime reachable types $\mathcal{RT}_c : \mathit{Refs} \to \mathcal{RTS}_\text{exact}$ of a reference $r$ at a memory state $c$ are defined by following heap edges and collecting all type information
+\end{block}
+\end{frame}
+\begin{frame}{Heap shape II}
+    \tikzset{block/.style={shape=rectangle, draw, node distance=-1pt, minimum width = 10em, line width=1pt}}
+    \tikzset{headblock/.style={shape=rectangle, draw, node distance=-1pt, minimum width = 10em, line width=3pt}}
+    \begin{tikzpicture}
+        \node[headblock] (list1) {List};
+        \node[left=1em of list1] {};
+        \node[block,below=of list1] (next1) {next};
+        \node[block,below=of next1] (value1) {value};
+        \node[headblock,right=4em of list1] (list2) {List};
+        \node[block,below=of list2] (next2) {next};
+        \node[block,below=of next2] (value2) {value};
+        
+        \node[shape=circle, draw, minimum width=2em, line width=1pt, above=1em of list1] (ref) {xs};
+        
+        \node[headblock, below=2em of value1] (obj1) {SomeClass};
+        \node[headblock, below=2em of value2] (obj2) {OtherClass};
+        \draw[->] (next1.east) to (list2.west);
+        \draw[->] (ref.south) to (list1.north);
+        \draw[->] (value1.south) to (obj1.north);
+        \draw[->] (value2.south) to (obj2.north);
+        \draw[->, bend right, out=210, looseness=1.5] (next2.east) to (list1.north);
+    \end{tikzpicture}
+\begin{align*}
+    \mathcal{RT}_c(\mathtt{xs}) &= \{ \mathtt{List} \to \{ \epsilon, \mathtt{next}, \mathtt{next.next}, \mathtt{next.next.next}, \cdots\}\\
+    &\ \ \ ,\ \mathtt{SomeClass} \to \{ \mathtt{value} \}, \mathtt{OtherClass} \to \{ \mathtt{next.value} \} \}
+\end{align*}
+
+\end{frame}
+\subsection{Flow analysis}
+\begin{frame}{Static analysis considerations}
+\begin{itemize}
+    \item Heap paths to approximate heap sequences
+    \item Heap-shape analysis to track fields of an object
+    \item Modular results so that each method only has to be analysed once
+    \item Interprocedual flow analysis to follow control flow across methods
+\end{itemize}
+\end{frame}
+\begin{frame}{Reachable type set}
+\begin{block}{Reachable type set} 
+Reachable type set $\mathcal{RTS} = \mathcal{JT} \mapsto \mathcal{P}$: partial function from Java types to \emph{heap paths}
+\end{block}
+\pause
+\begin{itemize}
+\item Problem: method invocation context affects reachable type sets
+\pause
+\item Solution: allow for parameter placeholders
+\end{itemize}
+\pause
+\begin{block}{Parametric type set}
+A \emph{parametric type set} $\mathcal{PTS} = (\mathcal{RTS}, \mathbb{N} \mapsto \mathcal{P})$ is a 2-tuple with
+\begin{itemize} 
+\item a reachable type set $\mathcal{RTS}$ 
+\item a partial function $\mathbb{N} \mapsto \mathcal{P}$ that models the occurence of an argument at some heap path
+\end{itemize}
+\end{block}
+\end{frame}
+\begin{frame}{Parametric type set example}
+\begin{block}{Example: parametric type set application}
+\[ pts = (\ \{\ \tikzmarkin<3->{ts}\mathtt{List} \to \{\mathtt{next}^{[0,*]}\}\tikzmarkend{ts}\ \}\ ,\ \{\ \tikzmarkin<4->[c2]{a0}0 \to \epsilon\tikzmarkend{a0}\ ,\  \tikzmarkin<5->[c3]{a2}2 \to \mathtt{value}\tikzmarkend{a2}\ \}\ )\]
+\pause
+\[ args = \left[\ \tikzmarkin<4->[c2]{pa0} (\varnothing, \varnothing) \tikzmarkend{pa0}\ ,\ (\varnothing, \varnothing)\ ,\ \tikzmarkin<5->[c3]{pa2} (\{ \texttt{Object} \to \epsilon \}, \varnothing)\tikzmarkend{pa2}\ \right]\]
+\pause
+\[ \operatorname{apply}(pts, args) = (\ \{\ \tikzmarkin<3->{nts}\mathtt{List} \to \{\mathtt{next}^{[0,*]}\}\tikzmarkend{nts}\ ,\ \tikzmarkin<5->[c3]{na2}\mathtt{Object} \to \mathtt{value}\tikzmarkend{na2}\ \}\ ,\ \varnothing\ ) \]
+\end{block}
+\end{frame}
+
+\begin{frame}{Parametric method result}
+\begin{block}{Parametric method result}
+A \emph{parametric method result} $\mathcal{PMR} = (\mathcal{PTS}, \mathcal{PTS}^*)$ is a 2-tuple consisting of 
+\begin{itemize}
+    \item a parametric type set containing the return value's reachable types
+    \item a sequence of parametric type sets with the updated arguments' reachable types
+\end{itemize}
+The operation $\operatorname{apply} : (\mathcal{PMR}, \mathcal{PTS}^*) \to \mathcal{PMR}$ performs $\operatorname{apply}$ on each parametric type set contained within.
+\end{block}
+\end{frame}
+\begin{frame}[fragile]{Analysis example}
+\begin{block}{Example}
+Consider the following Java code:
+\begin{javacode}
+public static List setValue(Object value, List xs) {
+    xs.value = value;
+    return xs;
+}
+\end{javacode}
+Then the parametric method result for \text{List setValue(Object,List)} is \[(\ \underbrace{(\varnothing, \{ 0 \to \mathtt{value}, 1 \to \epsilon\})}_\text{return value type set} , [\ \underbrace{(\varnothing, \{0 \to \epsilon\})}_\text{first argument}, \underbrace{(\varnothing, \{ 0 \to \mathtt{value}, 1 \to \epsilon\})}_\text{second argument}\ ]\ )\]
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Possible types of a right-hand value}
+\begin{block}{Example: local variable}
+\begin{javacode}
+List xs = new List();
+xs.value = new Unit();
+Object obj = this;
+\end{javacode}
+\vspace{-4pt}
+$\texttt{Object result = } \tikzmarkin<1->{ptlocal}\mathtt{xs}\tikzmarkend{ptlocal}$
+
+\vspace{5pt}
+State after line 3 with $b := a$: 
+\begin{align*} a := \{\mathtt{xs} \to (\{\mathtt{List} \to \epsilon,\ \mathtt{Unit} \to \mathtt{value} \}, \varnothing), \mathtt{obj} \to (\varnothing, \{ 0 \to \epsilon \}) \}
+\end{align*}
+
+\vspace{5pt} \hline \vspace{5pt}
+Calculate the possible types for \texttt{xs} at line 4:
+    \[ \operatorname{pt}(a,b,\tikzmarkin<1->{ptlocal2}\mathtt{xs}\tikzmarkend{ptlocal2}) = (\{ \mathtt{List} \to \epsilon,\ \mathtt{Unit} \to \mathtt{value} \}, \varnothing)\]
+\end{block}
+\end{frame}
+
+\begin{frame}{Possible types of a right-hand value}
+\[  \operatorname{pt} : (\mathit{Refs} \to \mathcal{PTS})^2 \times \mathit{rvalue} \to \mathcal{PTS} \]
+\begin{itemize}
+\item Two partial functions $a, b : \mathit{Refs} \mapsto \mathcal{PTS}$ where $a$ is the analysis state before the current statement and $b$ is the new state
+\item A \emph{rvalue} expression --- any expression that can occur to the right of an assignment
+\end{itemize}
+\begin{block}{Possible types of \emph{rvalue}}
+\begin{itemize}
+\item \emph{rvalue} is a reference: return parametric type set of reference in $a$
+% \item \emph{rvalue} is a regular value: return type set with type of value at $\epsilon$
+% \item \emph{rvalue} is a method invoke: method result of invoked method required
+\end{itemize}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Possible types of a right-hand value}
+\begin{block}{Example: instance field}
+\begin{javacode}
+List xs = new List();
+xs.value = new Unit();
+Object obj = this;
+\end{javacode}
+\vspace{-4pt}
+$\texttt{Object result = } \tikzmarkin<1->{ptfield}\mathtt{xs.value}\tikzmarkend{ptfield}$
+
+\vspace{5pt}
+State after line 3 with $b := a$: 
+\begin{align*} a := \{\mathtt{xs} \to (\{\mathtt{List} \to \epsilon,\ \mathtt{Unit} \to \mathtt{value} \}, \varnothing), \mathtt{obj} \to (\varnothing, \{ 0 \to \epsilon \}) \}
+\end{align*}
+
+\vspace{5pt} \hline \vspace{5pt}
+Calculate the possible types for \texttt{xs} at line 4:
+    \[ \operatorname{pt}(a,b,\tikzmarkin<1->{ptfield2}\mathtt{xs.value}\tikzmarkend{ptfield2}) = (\{ \mathtt{Unit} \to \epsilon \}, \varnothing)\]
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Possible types of a right-hand value}
+\begin{block}{Example: regular value}
+\begin{javacode}
+List xs = new List();
+xs.value = new Unit();
+Object obj = this;
+\end{javacode}
+\vspace{-4pt}
+$\texttt{Object result = } \tikzmarkin<1->{ptnew}\texttt{new Object}\tikzmarkend{ptnew}$
+
+\vspace{5pt}
+State after line 3 with $b := a$: 
+\begin{align*} a := \{\mathtt{xs} \to (\{\mathtt{List} \to \epsilon,\ \mathtt{Unit} \to \mathtt{value} \}, \varnothing), \mathtt{obj} \to (\varnothing, \{ 0 \to \epsilon \}) \}
+\end{align*}
+
+\vspace{5pt} \hline \vspace{5pt}
+Calculate the possible types for \texttt{xs} at line 4:
+    \[ \operatorname{pt}(a,b,\tikzmarkin<1->{ptnew2}\texttt{new Object}\tikzmarkend{ptnew2}) = (\{ \mathtt{Object} \to \epsilon \}, \varnothing)\]
+\end{block}
+\end{frame}
+
+\begin{frame}{Possible types of a right-hand value}
+\[  \operatorname{pt} : (\mathit{Refs} \to \mathcal{PTS})^2 \times \mathit{rvalue} \to \mathcal{PTS} \]
+\begin{itemize}
+\item Two partial functions $a, b : \mathit{Refs} \mapsto \mathcal{PTS}$ where $a$ is the analysis state before the current statement and $b$ is the new state
+\item A \emph{rvalue} expression --- any expression that can occur to the right of an assignment
+\end{itemize}
+\begin{block}{Possible types of \emph{rvalue}}
+\begin{itemize}
+\item \emph{rvalue} is a reference: return parametric type set of reference in $a$
+\item \emph{rvalue} is a regular value: return type set with type of value at $\epsilon$
+% \item \emph{rvalue} is a method invoke: method result of invoked method required
+\end{itemize}
+\end{block}
+\end{frame}
+
+\begin{frame}{Possible-types of a right-hand value}
+\begin{block}{Example: method invocation}
+Parametric method result for \text{List setValue(Object,List)}: \[(\ \underbrace{(\varnothing, \{ \tikzmarkin<2->[c2]{ptiobj4}0\tikzmarkend{ptiobj4} \to \mathtt{value}, \tikzmarkin<3>[c3]{ptixs1}1\tikzmarkend{ptixs1} \to \epsilon\})}_\text{return value type set} , [\ \underbrace{(\varnothing, \{\tikzmarkin<2->[c2]{ptiobj5}0\tikzmarkend{ptiobj5} \to \epsilon\})}_\text{first argument}, \underbrace{(\varnothing, \{ \tikzmarkin<2->[c2]{ptiobj6}0\tikzmarkend{ptiobj6} \to \mathtt{value}, \tikzmarkin<3>[c3]{ptixs2}1\tikzmarkend{ptixs2} \to \epsilon\})}_\text{second argument}\ ]\ )\]
+\[ a := \{\tikzmarkin<3>[c3]{ptixs3}\mathtt{xs} \to (\{\mathtt{List} \to \epsilon,\ \mathtt{Unit} \to \mathtt{value} \}, \varnothing)\tikzmarkend{ptixs3}, \tikzmarkin<2->[c2]{ptiobj1}\mathtt{obj} \to (\varnothing, \{ 0 \to \epsilon \})\tikzmarkend{ptiobj1} \}\] \hline
+\[ \operatorname{pt}(a,b,\tikzmarkin<1>{ptinvoke}\mathtt{setValue}(\tikzmarkin<2->[c2]{ptiobj7}\mathtt{obj}\tikzmarkend{ptiobj7}, \tikzmarkin<3>[c3]{ptixs4}\mathtt{xs}\tikzmarkend{ptixs4})\tikzmarkend{ptinvoke} ) = \tikzmarkin<3>[c3]{ptiobjf} (\{ \mathtt{List} \to \epsilon,\ \mathtt{Unit} \to \mathtt{value} \}, \{ \tikzmarkin<2->[c2]{ptiobj2}0 \to \mathtt{value}\tikzmarkend{ptiobj2}) \}) \tikzmarkend{ptiobjf} \]
+\begin{align*}
+    \text{with } b &= \{ \tikzmarkin<3>[c3]{ptixs5}\mathtt{xs} \to (\{ \mathtt{List} \to \epsilon,\ \mathtt{Unit} \to \mathtt{value} \}, \{  \tikzmarkin<2->[c2]{ptiobj8}0 \to \mathtt{value}\tikzmarkend{ptiobj8} \})\tikzmarkend{ptixs5}\\
+    &\ \ \  ,\  \tikzmarkin<2->[c2]{ptiobj3}\mathtt{obj} \to (\varnothing, \{ 0 \to \epsilon \})\tikzmarkend{ptiobj3} \} 
+\end{align*}
+\end{block}
+\end{frame}
+
+\begin{frame}{Possible-types of a right-hand value}
+\begin{block}{Possible types of a method invoke expression}
+\begin{itemize}
+\item \emph{rvalue} is a method invoke: analysis of invoked method required
+\item[$\Rightarrow$]<2-> Dynamic dispatch --- $rvalue = r.m(arg_1, ...,arg_n)$: all possible concrete implementations have to be analysed
+\begin{itemize}
+\item $a(r)$ does not contain an argument placeholder: analyse all subclasses of $r$ contained in $a(r)$ where the path matches $\epsilon$
+\item $a(r)$ contains a placeholder: analyse all possible subclasses of $r$
+\end{itemize}
+\item<3-> Result: parametric method result $pmr_{res}$
+\item<4-> Instantiate it: $(retPts, argsPts) = \operatorname{apply}(pmr_{res}, (a(arg_i))_{i \le n})$
+\item<5-> Update $arg_i$ and predecessors in $b$ with type set in $argsPts$
+\item<5-> Return $retPts$
+\end{itemize}
+\end{block}
+\end{frame}
+
+\begin{frame}{Data flow analysis}
+\begin{block}{Forward data flow analysis}
+\begin{itemize}
+\item Traverses the control-flow graph starting at the method entry point
+\item Propagate the analysis state by using $b(stmt) := \operatorname{flowThrough}(a(stmt), stmt)$ where $a(stmt)$ is the state before $stmt$ and $b$ is the state after
+\item Fixpoint iteration if the graph contains loops, terminate if $b(stmt)$ does not change
+\end{itemize}
+\end{block}
+\end{frame}
+
+\begin{frame}{Interlude: Jimple}
+\begin{itemize}
+    \item Stackless representation of Java bytecode
+    \item 11 statements, 19 instructions total (cf. JBC: with $>200$ instructions)
+    \item Important statements and expressions:
+    \begin{itemize}
+        \item \emph{assignStmt} (local = \emph{rvalue}, local.field = local) and \emph{identityStmt}~(local~=~\texttt{@this})
+        \item \emph{invokeStmt} and \emph{invokeExpr}
+        \item \emph{ifStmt} (\texttt{if} \emph{conditionExpr} \texttt{goto} label)  and \emph{gotoStmt} (\texttt{goto} label)
+        \item \emph{returnStmt}
+    \end{itemize}
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Flow-through function}
+\[ \operatorname{flowThrough} : (\mathit{Refs} \mapsto \mathcal{PTS}, \mathit{Stmt}) \to \mathit{Refs} \mapsto \mathcal{PTS} \]
+\begin{itemize}
+\item Previous state $a : \mathit{Refs} \mapsto \mathcal{PTS}$ and new state $b := a$
+\item Jimple statement $stmt$
+\end{itemize}
+\begin{block}{Flow-through function}
+\begin{itemize}
+\item \emph{assignStmt} (x = y): 
+\begin{itemize}
+\item If x is a local, set $b(x) = pt(a,b,y)$
+\item Otherwise set $b(r) = b(r) + preds(r).pt(a,b,y)$ for each predecessors $r$
+\end{itemize}
+\item \emph{identityStmt} (local = \texttt{@this}): Set the corresponding local to a placeholder
+\item \emph{invokeStmt}: treat it like in $\operatorname{pt}(a,b,invokeExpr)$
+\end{itemize}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Data flow analysis example}
+\begin{javacode}
+List xs = new List();
+while(cond) {
+    xs.value = "loop";
+    xs.next = new List();
+    xs = xs.next;
+}
+// ...
+\end{javacode}
+\end{frame}
+
+\begin{frame}[fragile]{Data flow analysis example}
+\begin{minted}{text}
+xs = new List;
+
+loop:
+if !cond goto end;
+xs.value = "loop";
+xs.next = new List;
+xs = xs.next;
+goto loop;
+
+end:
+// ...
+\end{minted}
+\end{frame}
+
+\begin{frame}{Data flow analysis example}
+\tikzset{block/.style={shape=rectangle, draw, node distance=-1pt, minimum width = 30em, line width=1pt}}
+\begin{tikzpicture}[scale=0.7, every node/.style={transform shape}]
+
+
+ \newcommand*\nodeonecolor{white}
+ \newcommand*\nodetwocolor{white}
+ \newcommand*\nodethreecolor{white}
+ \newcommand*\nodefourcolor{white}
+ \newcommand*\nodefivecolor{white}
+ 
+ \newcommand*\mycolor{blue!20!cyan!60}
+ 
+ \only<2>{\renewcommand*\nodeonecolor{\mycolor}}
+ \only<3,7,11>{\renewcommand*\nodetwocolor{\mycolor}}
+ \only<4,8,12>{\renewcommand*\nodethreecolor{\mycolor}}
+ \only<5,9>{\renewcommand*\nodefourcolor{\mycolor}}
+ \only<6,10>{\renewcommand*\nodefivecolor{\mycolor}}
+ 
+
+\node[block, fill=\nodeonecolor] (s0) {\texttt{xs = new List;}};
+\node[block, below=of s0, fill=\nodeonecolor] (c0) {{\alt<2->{$ \{ xs \to \{ \mathtt{List} \to \epsilon \} \}$}{}}};
+
+\node[block,below=0.5em of c0, fill=\nodetwocolor] (s1) {\texttt{if !cond goto end;}};
+\node[block,below=of s1, fill=\nodetwocolor] (c1) { 
+\alt<3-6>{$\{ xs \to \{ \mathtt{List} \to \epsilon \} \}$}{\alt<7-10>{$\{ xs \to \{ \mathtt{List} \to \{ \mathtt{next}^{[0,*]} \}, \mathtt{String} \to \mathtt{value} \} \}$}{
+\alt<11->{$\{ xs \to \{ \mathtt{List} \to \{ \mathtt{next}^{[0,*]} \}, \mathtt{String} \to \{ \mathtt{next}^{[0,*]} \}, \{ \mathtt{value}^{[1,1]} \} \} \}$}{}}}
+};
+
+\node[block,below=0.5em of c1, fill=\nodethreecolor] (s2) {\texttt{xs.value = "loop";}};
+\node[block,below=of s2, fill=\nodethreecolor] (c2) {\alt<4-7>{$\{ xs \to \{ \mathtt{List} \to \epsilon, \mathtt{String} \to \mathtt{value} \} \}$}{\alt<8->{$\{ xs \to \{ \mathtt{List} \to \{ \mathtt{next}^{[0,*]} \}, \mathtt{String} \to \{ \mathtt{next}^{[0,*]} \}, \{ \mathtt{value}^{[1,1]} \} \ \}$}{}}
+};
+
+\node[block,below=0.5em of c2, fill=\nodefourcolor] (s3) {\texttt{xs.next = new List;}};
+\node[block,below=of s3, fill=\nodefourcolor] (c3) {\alt<5-8>{$\{ xs \to \{ \mathtt{List} \to \{ \mathtt{next}^{[0,1]} \}, \mathtt{String} \to \mathtt{value} \} \}$}{\alt<9->{$\{ xs \to \{ \mathtt{List} \to \{ \mathtt{next}^{[0,*]} \}, \mathtt{String} \to \{ \mathtt{next}^{[0,*]} \}, \{ \mathtt{value}^{[1,1]} \} \} \}$}{}}
+};
+\node[block,below=0.5em of c3, fill=\nodefivecolor] (s4) {\texttt{xs = xs.next;}};
+\node[block,below=of s4, fill=\nodefivecolor] (c4) {\alt<6-9>{$\{ xs \to \{ \mathtt{List} \to \{ \mathtt{next}^{[0,*]} \}, \mathtt{String} \to \mathtt{value} \} \}$}{\alt<10->{$\{ xs \to \{ \mathtt{List} \to \{ \mathtt{next}^{[0,*]} \}, \mathtt{String} \to \{ \mathtt{next}^{[0,*]} \}, \{ \mathtt{value}^{[1,1]} \} \} \}$}{}}
+};
+
+\node[block, below=2em of c4, fill=\nodethreecolor] (s2b) {\texttt{// ...}};
+\node[block,below=of s2b, fill=\nodethreecolor] (c2b) { 
+\alt<4-7>{$\{ xs \to \{ \mathtt{List} \to \epsilon \} \}$}{\alt<8-11>{$\{ xs \to \{ \mathtt{List} \to \{ \mathtt{next}^{[0,*]} \}, \mathtt{String} \to \mathtt{value} \} \}$}{
+\alt<11->{$\{ xs \to \{ \mathtt{List} \to \{ \mathtt{next}^{[0,*]} \}, \mathtt{String} \to \{ \mathtt{next}^{[0,*]} \}, \{ \mathtt{value}^{[1,1]} \} \} \}$}{}}}
+};
+\node<12> (phantom) {};
+
+\draw[->] (c0.south) to (s1.north);
+\draw[->] (c1.south) to (s2.north);
+
+\draw[->] (c2.south) to (s3.north);
+\draw[->] (c3.south) to (s4.north);
+
+\draw[->, bend left] (s1.east) to node[right] {\texttt{goto end;}} (s2b.east);
+\draw[->, bend left] (s4.west) to node[left] {\texttt{goto loop;}} (s1.west);
+\end{tikzpicture}
+\end{frame}
+
+\subsection{Applications}
+\begin{frame}{Applications}
+\begin{itemize}
+\item Call devirtualisation
+\begin{itemize}
+\item Possible targets for an invoke $b.m()$: types for $b$ at $\epsilon$
+\item Only if the type set is fully concrete at $\epsilon$
+\end{itemize}
+\item Disproving path existence
+\begin{itemize}
+\item Type of $y$ not contained in RTS for $x$
+\item[$\Rightarrow$] $y$ not reachable from $x$
+\end{itemize}
+\end{itemize}
+\end{frame}
+\section{Evaluation}
+\begin{frame}[allowframebreaks]{Evaluation}
+\begin{itemize}
+\item Reachable type analysis uses dynamic dispatch resolution
+\item Comparison of RTA with and without refinement
+\item 4 different test cases\footnote{\url{https://github.com/KaneTW/bachelor-thesis-testcases}}
+%todo mention that TPDB/heap-shape analysis should've been used (maybe after results)
+\begin{itemize}
+\item ResultListTest: invoked method base is a local variable
+\item Level1: base is a field of a local variable
+\item FiniteListTest: iterates over list constructed without loops and uses elements as base
+\item LoopListTest: as FiniteListTest, but list constructed via loop
+\end{itemize}
+\end{itemize}
+\begin{table}[ht]
+    \centering
+    \begin{tabular}{l||c|c|c|c|c}
+     & \multicolumn{5}{c}{Change in }\\
+         Test case & $\mathit{count}$ & $\mathit{total}_\mathit{ts}$ &  $\mathit{total}_\mathit{p}$ & $\mathit{avg}_{\mathit{ts}}$ & $\mathit{avg}_{\mathit{p}}$ \\
+         \hline
+         ResultListTest & 0\% & -23\% & 0\% & -23\% & 0\% \\
+         Level1 & -3.4\% & -29\% & 0\% & -26\% & +4.0\% \\
+         FiniteListTest & -3.6\% & -9.8\% & 0\% & -6.4\% & +3.8\% \\
+         LoopListTest & -2.0\% & -3.8\% & 0\% & -1.8\% & +2.1\% 
+    \end{tabular}
+    \caption{Result changes with refinement enabled}
+    \label{tab:changes}
+\end{table}
+\end{frame}
+\begin{frame}{Evaluation}
+\begin{block}{Evaluation was only preliminary}
+\begin{itemize}
+    \item Originally planned: Integrate with heap-shape analysis and measure refinements
+    \item[$\Rightarrow$] Implementation difficulties
+    \item Why artificial examples instead of TPDB?
+    \item[$\Rightarrow$] TPDB either caused HSA to crash or didn't provide improvements
+\end{itemize}
+\end{block}
+\end{frame}
+\section*{Conclusion}
+\begin{frame}{Future work}
+    \begin{itemize}
+        \item Arrays and static fields support
+        \item Recursion support
+        \item Integration with heap-shape analysis
+        \item More exact parametric type sets: include type set only if some method actually occurs in the concrete type set \emph{after parameter replacement}
+    \end{itemize}
+\end{frame}
+\begin{frame}{Conclusion}
+\begin{itemize}
+    \item Implemented a sound, path-sensitive, modular reachable type analysis
+    \item Uses existing heap path formulation and heap-shape analysis
+    \item Primary application: refining heap-shape information
+    \item Reasonable improvements in call devirtualisation accuracy
+\end{itemize}
+\end{frame}
+\end{document}
+ 

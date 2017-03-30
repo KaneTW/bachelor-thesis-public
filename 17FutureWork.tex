@@ -1,0 +1,29 @@
+\chapter{Future work}
+\label{chap:future}
+\section{Current restrictions}
+Array references and static fields are currently not properly supported due to lack of implementation in the used heap-shape analysis. Array references are stored in the base reference whereas static fields are not propagated along method boundaries.
+
+Recursion is currently unsupported due to both lack of implementation in the heap-shape analysis and the call graph traversal method used. This excludes a fairly large class of programs.
+
+\section{Known issues}
+Field access on parametric placeholders does not work as expected. This was unfortunately only noticed in the final stages of the thesis as the current behaviour is correct for non-parametric type sets.
+The following code currently returns $(\varnothing, \varnothing)$, which is not correct for parametric type sets.
+\begin{javacode}
+public static List getNodes(Tree tree) {
+    return tree.nodes;
+}
+\end{javacode}
+A possible solution would be to use parametric type sets $(\mathcal{RTS}, (\mathbb{N}, \mathcal{P}) \mapsto \mathcal{P})$ and extend the instance field case in $\operatorname{pt}$ (\cref{def:pt}) so that the correct type set is returned. Parameter application would be defined by  \[
+    \operatorname{apply}((rts, ps), args) :=  (rts, \varnothing) + \sum_{(n,pre) \in \Dom(ps)} ps(n).\Matching(args_n, pre)
+\]
+Then the above code has a return type set of to $(\varnothing, \{ (0, \texttt{nodes}) \to \epsilon \})$, which should work as expected.
+The soundness proof can be corrected by proving soundness of the $\Matching$-operator, which should be possible as it is more restrictive on exact reachable type sets than parametric type sets.
+
+
+\section{Improvements}
+Type sets included as a dynamic dispatch possibility can be made conditional on the target type actually being in the callee's parametric type set when instantiating the parameters. Currently it only checks for possible targets at analysis and adds all targets if a set placeholder is encountered. The idea behind this is to emulate the more exact analysis results if it is re-run every time a method invocation is encountered, which predictably significantly worsens performance.
+
+Another area of improvement is adding the reachable types of successors lazily; upon encountering an assignment of a reference to an instance field, reachable types of the right-hand side object are currently added to the reachable type set instantly. It could be prudent to add them to the reachable type set only when the original reference no longer exists or the method result is generated, as that allows the type set for e.g. \javainline{x.f = y; x.f = z;} to be safely reduced as \texttt{y} is no longer referenced.
+
+\section{Integration with heap-shape analysis}
+One of the primary goals when designing this analysis was to use it for refining a path-sensitive heap-shape analysis. This leads to a situation where the heap-shape analysis can use reachable type sets for e.g. call devirtualisation to generate a more exact heap model, while our reachable type analysis uses heap-shape analysis for information on predecessors of a reference. Iterating the two analyses can then lead to an increase in exactness at the cost of performance.

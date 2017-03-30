@@ -1,0 +1,51 @@
+\chapter{Results and evaluation}
+\label{chap:results}
+In order to evaluate the effectiveness of our analysis, we measure the improvement in virtual method resolution by analysing artificial problems\footnote{Originally it was planned to refine the used heap-shape analysis and use it to measure the quality of refinement. However due to implementation issues and time constraints integrating reachable type analysis with the heap-shape analysis was not possible at this point. Additionally, TPDB~\cite{tpdb} problems did not utilize dynamic dispatch in a way that caused changes in the analysis results.} utilising dynamic dispatch. We then calculate the size all calculated parametric type sets and compare the average and maximum size with and without any refinement.
+
+In the following table\footnote{The different test cases can be found at ~\cite{github-testcases}}, let $\mathit{total}_\mathit{ts}$, $\mathit{avg}_\mathit{ts}$ resp. $\mathit{max}_\mathit{ts}$ be the total, average resp. maximum amount of types in the concrete type set and $\mathit{total}_{\mathit{p}}$, $\mathit{avg}_{\mathit{p}}$ resp. $\mathit{max}_{\mathit{p}}$ be the total, average resp. maximum amount of placeholders for method parameters. Furthermore $\mathit{count}$ denotes the total amount of defined references in the analysis, i.e. using the definitions from \cref{def:fdfa} this corresponds to $\sum_{s \in \mathit{Stmt}}|\Dom(b(s,r))|$
+
+\begin{table}[ht]
+    \centering
+    \begin{tabular}{l||c|c|c|c|c|c|c}
+&\multicolumn{7}{c}{Without refinement} \\
+         Test case & $\mathit{count}$ & $\mathit{total}_\mathit{ts}$ &  $\mathit{total}_\mathit{p}$ & $\mathit{avg}_{\mathit{ts}}$ & $\mathit{avg}_{\mathit{p}}$ & $\mathit{max}_{\mathit{ts}}$ & $\mathit{max}_{\mathit{p}}$ \\
+         \hline
+         ResultListTest & 340 & 414 & 89 & 1.22 & 0.26 & 4 & 1\\
+         Level1 & 519 & 795 & 178 & 1.53 & 0.34 & 5 & 1 \\
+         FiniteListTest & 192 & 214 & 68 & 1.11 & 0.35 & 3 & 1\\
+         LoopListTest & 343 & 547 & 77 & 1.59 & 0.22 & 3 & 1  \\
+         \hline \hline
+         & \multicolumn{7}{c}{With refinement}\\
+         Test case & $\mathit{count}$ & $\mathit{total}_\mathit{ts}$ &  $\mathit{total}_\mathit{p}$ & $\mathit{avg}_{\mathit{ts}}$ & $\mathit{avg}_{\mathit{p}}$ & $\mathit{max}_{\mathit{ts}}$ & $\mathit{max}_{\mathit{p}}$ \\
+         \hline
+         ResultListTest & 340 & 318 & 89 & 0.94 & 0.26 & 4 & 1\\
+         Level1 & 499 & 563 & 178 & 1.13 & 0.36 & 5 & 1 \\
+         FiniteListTest & 185 & 193 & 68 & 1.04 & 0.37 & 3 & 1\\
+         LoopListTest & 336 & 526 & 77 & 1.57 & 0.23 & 3 & 1 
+    \end{tabular}
+    \caption{Test results}
+    \label{tab:results}
+\end{table}
+
+\begin{table}[ht]
+    \centering
+    \begin{tabular}{l||c|c|c|c|c|c|c}
+     & \multicolumn{7}{c}{Change in }\\
+         Test case & $\mathit{count}$ & $\mathit{total}_\mathit{ts}$ &  $\mathit{total}_\mathit{p}$ & $\mathit{avg}_{\mathit{ts}}$ & $\mathit{avg}_{\mathit{p}}$ & $\mathit{max}_{\mathit{ts}}$ & $\mathit{max}_{\mathit{p}}$  \\
+         \hline
+         ResultListTest & 0\% & -23\% & 0\% & -23\% & 0\% & 0\% & 0\% \\
+         Level1 & -3.4\% & -29\% & 0\% & -26\% & +4.0\% & 0\% & 0\% \\
+         FiniteListTest & -3.6\% & -9.8\% & 0\% & -6.4\% & +3.8\% & 0\% & 0\% \\
+         LoopListTest & -2.0\% & -3.8\% & 0\% & -1.8\% & +2.1\% & 0\% & 0\%
+    \end{tabular}
+    \caption{Result changes with refinement enabled}
+    \label{tab:changes}
+\end{table}
+
+
+As we can see, enabling refinement significantly reduced the amount of concrete types in the result while leaving the amount of abstract parameters unchanged. It also reduces the amount of references associated with a parametric type set, probably because some objects are only reachable if a specific method is called.
+
+ResultListTest and Level1 use a local variable respectively a reference to a field of a local variable as the dynamic dispatch base reference. Thus the highest accuracy can be achieved here, as it's generally possible to uniquely restrict the called method since the heap paths should only consist of a finite sequence.
+In contrast to the first two test cases, FiniteListTest and LoopListTest iterate over a list when performing dynamic dispatch. FiniteListTest constructs the list sequentially while LoopListTest uses a loop. This causes the heap path of the base reference to be an abstract path, making dynamic dispatch devirtualization less exact.
+
+Overall a reduction in parametric type set size was achieved every time, ranging from $-3.8\%$ to $-29\%$ in total size, signifying an increased analysis accuracy. Peculiarly the highest occurring type set size never changes, but that is likely an artifact of the used test cases. 

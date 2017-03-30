@@ -1,0 +1,11 @@
+\chapter{Related work}
+\label{chap:related}
+\section{Heap-shape information}
+Separation logic~\cite{Reynolds:2002:SLL:645683.664578} is an extension of Hoare logic for reasoning about shared data structures. Its key feature is \emph{locality} where proofs or specifications of a subprogram in separation logic only mention the memory portion that is actually used in the subprogram. Applications include program analyses such as compositional shape analysis ~\cite{Calcagno:2009:CSA:1594834.1480917} which allows each procedure in a program to be analysed separately. The techniques developed in compositional shape analysis are in turn used e.g. in ~\cite{fbinfer}.
+
+AProVE~\cite{automated-termination-proofs-for-java-bytecode-with-cyclic-data}, Julia~\cite{DBLP:journals/scp/ScapinS14} or COSTA~\cite{GenaimZ13} all developed tools that deal with heap-shape information, whether using term rewriting systems in AProVE, abstract interpretation combined with constraint graphs in Julia or abstract interpretation with propositional formulae in COSTA.
+
+Additionally, graph grammar methods use hyperedge replacement grammars~\cite{Heinen2015157} to obtain a finite hypergraph representation of data structures. This yields a finite state space that can then be further analysed with e.g. model checking tools.
+
+\section{Points-to analysis}
+Points-to analysis, also known as pointer analysis, is a static analysis that calculates the set of references that a reference can possibly take at runtime. Algorithms in weakly typed languages such as Steensgaard's method~\cite{Steensgaard:1996:PAA:237721.237727} cannot use type information as weakly typed languages support arbitrary casts. However in strongly typed, object-oriented languages such as C++ or Java algorithms such as rapid type analysis~\cite{Bacon:1996:FSA:236338.236371} or variable type analysis~\cite{Sundaresan:2000:PVM:354222.353189} do utilize and store type information, which can then be used for e.g. call devirtualization. These analyses either ignore fields completely in case of a \emph{field-insensitive} points-to analysis or do not allow enumerating all fields at which some object or type occur as is the case for a \emph{field-sensitive} points-to analysis.

@@ -1,0 +1,25 @@
+\section{Refining heap-shape information}
+\label{chap:refining}
+\subsection{Call devirtualisation}
+Reachable type analysis can be used to resolve possible dynamic dispatch targets: Given a virtual invoke statement \javainline{r.s()} the set of possible concrete classes can be determined as follows:
+If the type set for $r$ contains a placeholder, then every non-abstract subclass of the type of $r$ has to be included. Otherwise it is sufficient to analyse all subclasses contained at $\epsilon$. See \cref{ex:virtual} for an example application in the reachable type analysis itself.
+\begin{example}[Resolving virtual invokes in the reachable type analysis]
+\label{ex:virtual}
+Consider a simplified class hierarchy implementing Jimple statements in Soot.
+\begin{javacode}
+interface Stmt { void apply(Switch) }
+abstract class DefinitionStmt implements Stmt { /* ... */ }
+class IdentityStmt extends DefinitionStmt { /* ... */ }
+class AssignStmt extends DefinitionStmt { /* ... */ }
+class InvokeStmt implements Stmt { /* ... */ }
+\end{javacode}
+The possible types for \texttt{virtualinvoke x.apply(r)} where \texttt{x} has type \texttt{Stmt} and the type set for \texttt{x} is $(\varnothing, \{ 0 \to \epsilon \})$ are the union of the analysis results of all non-abstract implementations: \texttt{IdentityStmt.apply}, \texttt{AssignStmt.apply} and \texttt{InvokeStmt.apply}.
+
+However, if the type set of \texttt{x} is $(\{ \mathtt{IdentityStmt} \to \epsilon \}, \varnothing)$ then the result is just the result of \texttt{IdentityStmt.apply}.
+
+On the other hand if \texttt{x} has type \texttt{IdentityStmt} then the result is always given by the analysis of \texttt{IdentityStmt.apply}, and analogous with \texttt{AssignStmt}
+\end{example}
+
+\subsection{Disproving path existence}
+Shape analysis frequently has to deal with the question whether there exists a path from the object referenced by $x$ to the one referenced by $y$. This can be quickly disproven by checking whether the type of $y$ is contained in the reachable type set of $x$. If it is not contained, then the analysis can immediately mark the path as non-existing due to contradiction; if there was a path, then it would have been picked up during the reachable type analysis.
+
